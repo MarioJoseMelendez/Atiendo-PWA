@@ -1,0 +1,62 @@
+import type { Metadata, Viewport } from "next";
+import { Fraunces, Outfit } from "next/font/google";
+import { Suspense } from "react";
+import { AppShell } from "@/components/app-shell";
+import "./globals.css";
+
+const outfit = Outfit({
+  subsets: ["latin"],
+  variable: "--font-outfit",
+  weight: ["400", "500", "600", "700"],
+});
+
+const fraunces = Fraunces({
+  subsets: ["latin"],
+  variable: "--font-fraunces",
+  weight: ["500", "600", "700"],
+});
+
+export const metadata: Metadata = {
+  applicationName: "Estante",
+  title: {
+    default: "Estante",
+    template: "%s · Estante",
+  },
+  description: "Inventario, etiquetas QR y caja en efectivo para la librería.",
+  appleWebApp: {
+    capable: true,
+    title: "Estante",
+    statusBarStyle: "default",
+  },
+  formatDetection: { telephone: false },
+  icons: {
+    icon: [
+      { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" },
+      { url: "/icons/icon-512.png", sizes: "512x512", type: "image/png" },
+    ],
+    apple: [{ url: "/icons/apple-touch-icon.png", sizes: "180x180", type: "image/png" }],
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#173328",
+  width: "device-width",
+  initialScale: 1,
+  viewportFit: "cover",
+  colorScheme: "light",
+};
+
+export default function RootLayout({ children }: LayoutProps<"/">) {
+  return (
+    <html
+      lang="es"
+      className={`${outfit.variable} ${fraunces.variable} h-full antialiased`}
+    >
+      <body className="min-h-dvh">
+        <Suspense fallback={<p className="p-8 text-sm text-[#645c52]">Abriendo el estante…</p>}>
+          <AppShell>{children}</AppShell>
+        </Suspense>
+      </body>
+    </html>
+  );
+}
