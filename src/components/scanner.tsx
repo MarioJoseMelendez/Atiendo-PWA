@@ -48,7 +48,7 @@ export function Scanner({ onScan }: { onScan: (raw: string) => void }) {
     void enqueueScanner(async () => {
       const { Html5Qrcode } = await import("html5-qrcode");
       if (cancelled) return;
-      const scanner = new Html5Qrcode("estante-reader", { verbose: false });
+      const scanner = new Html5Qrcode("atiendo-reader", { verbose: false });
       try {
         await scanner.start(
           { facingMode: "environment" },
@@ -94,7 +94,7 @@ export function Scanner({ onScan }: { onScan: (raw: string) => void }) {
 
   return (
     <div className="grid gap-3">
-      <div id="estante-reader" className={phase === "idle" ? "hidden" : "block"} />
+      <div id="atiendo-reader" className={phase === "idle" ? "hidden" : "block"} />
       {phase === "idle" ? (
         <div className="grid min-h-64 place-items-center rounded-2xl bg-[#173328] px-6 text-center text-[#f6f1e6]">
           <div className="grid gap-3">

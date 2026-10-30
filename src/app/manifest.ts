@@ -2,8 +2,8 @@ import type { MetadataRoute } from "next";
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: "Estante",
-    short_name: "Estante",
+    name: "Atiendo",
+    short_name: "Atiendo",
     description: "Inventario, etiquetas QR y caja en efectivo para la librería.",
     id: "/",
     start_url: "/",

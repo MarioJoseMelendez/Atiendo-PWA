@@ -32,8 +32,8 @@ export function InstallHint() {
     <div className="rounded-xl bg-[#f3ead7] px-3 py-3 text-[#1c1915] md:bg-white/10 md:text-[#f6f1e6]">
       <p className="text-sm leading-5">
         {hint === "ready"
-          ? "Lista para instalar. En Chrome abre los tres puntos y elige Instalar Estante."
-          : "Para instalarla, abre el menú de Chrome (los tres puntos) y elige Instalar Estante."}
+          ? "Lista para instalar. En Chrome abre los tres puntos y elige Instalar Atiendo."
+          : "Para instalarla, abre el menú de Chrome (los tres puntos) y elige Instalar Atiendo."}
       </p>
       <button
         type="button"

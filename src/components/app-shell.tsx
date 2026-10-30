@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BookOpen, QrCode } from "lucide-react";
+import { Banknote, BookOpen, QrCode, Sparkles } from "lucide-react";
 import type { ReactNode } from "react";
 import { InventoryProvider } from "@/components/inventory-provider";
 import { InstallHint, PwaRegister } from "@/components/pwa-register";
@@ -10,6 +10,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Inventario", icon: BookOpen },
+  { href: "/cargar", label: "Carga IA", icon: Sparkles },
   { href: "/etiquetas", label: "Etiquetas", icon: QrCode },
   { href: "/caja", label: "Caja", icon: Banknote },
 ];
@@ -31,7 +32,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <BookOpen className="size-5" />
             </span>
             <div>
-              <p className="font-heading text-xl leading-none">Estante</p>
+              <p className="font-heading text-xl leading-none">Atiendo</p>
               <p className="mt-1 text-xs text-[#f6f1e6]/70">Librería · solo efectivo</p>
             </div>
           </div>
@@ -67,7 +68,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <header className="sticky top-0 z-30 flex items-center justify-between bg-[#173328] px-4 py-3 text-[#f6f1e6] print:hidden md:hidden">
             <div className="flex items-center gap-2">
               <BookOpen className="size-4" />
-              <p className="font-heading text-lg leading-none">Estante</p>
+              <p className="font-heading text-lg leading-none">Atiendo</p>
             </div>
             <p className="text-xs text-[#f6f1e6]/70">Solo efectivo</p>
           </header>
@@ -84,7 +85,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="fixed inset-x-0 bottom-0 z-40 border-t border-[#e3d5bb] bg-[#fffaf3]/95 pb-[env(safe-area-inset-bottom)] backdrop-blur print:hidden md:hidden"
         aria-label="Secciones"
       >
-        <ul className="grid grid-cols-3">
+        <ul className="grid grid-cols-4">
           {NAV.map((item) => {
             const Icon = item.icon;
             const active = isActive(pathname, item.href);

@@ -66,7 +66,7 @@ export function Etiquetas() {
             Cada QR lleva debajo el nombre de lo que es. Elige un grupo o saca todo el inventario.
           </p>
           <p className="sheet-heading mt-3 hidden font-heading text-lg print:block">
-            Estante · {title}
+            Atiendo · {title}
           </p>
         </div>
         <Button className="h-10 print:hidden" onClick={() => window.print()} disabled={products.length === 0}>

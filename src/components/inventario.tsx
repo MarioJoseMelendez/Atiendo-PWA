@@ -43,7 +43,6 @@ export function Inventario() {
   const [groupDialog, setGroupDialog] = useState<"create" | string | null>(null);
   const [productDialog, setProductDialog] = useState<"create" | string | null>(null);
   const [pendingDelete, setPendingDelete] = useState<Product | null>(null);
-  const [pendingRestore, setPendingRestore] = useState(false);
   const [notice, setNotice] = useState<string | null>(null);
   const dayKey = useGuatemalaToday(guatemalaDayKey);
   const groupId =
@@ -73,7 +72,7 @@ export function Inventario() {
     : null;
 
   if (!ready) {
-    return <p className="text-sm text-muted-foreground">Abriendo el estante…</p>;
+    return <p className="text-sm text-muted-foreground">Abriendo Atiendo…</p>;
   }
 
   return (
@@ -101,7 +100,7 @@ export function Inventario() {
         />
       </div>
       <p className="text-sm text-muted-foreground">
-        Valor en estante: {formatQ(inventoryValueCents(store.products))}
+        Valor en inventario: {formatQ(inventoryValueCents(store.products))}
       </p>
 
       {notice ? (
@@ -115,7 +114,7 @@ export function Inventario() {
           <CardContent className="grid gap-3 py-8 text-center">
             <p className="font-heading text-xl">Todavía no hay grupos</p>
             <p className="text-sm text-muted-foreground">
-              Crea uno para ordenar el estante, por ejemplo Novela o Papelería.
+              Crea uno para ordenar el inventario, por ejemplo Novela o Papelería.
             </p>
             <div>
               <Button onClick={() => setGroupDialog("create")}>Crear el primer grupo</Button>
@@ -300,16 +299,6 @@ export function Inventario() {
         </div>
       )}
 
-      <div className="border-t border-border pt-4">
-        <button
-          type="button"
-          className="text-sm text-muted-foreground underline underline-offset-2"
-          onClick={() => setPendingRestore(true)}
-        >
-          Restaurar el catálogo de ejemplo
-        </button>
-      </div>
-
       <GroupDialog
         open={groupDialog !== null}
         group={
@@ -365,29 +354,6 @@ export function Inventario() {
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={pendingRestore} onOpenChange={setPendingRestore}>
-        <AlertDialogContent className="sm:max-w-md">
-          <AlertDialogHeader>
-            <AlertDialogTitle>¿Volver al catálogo de ejemplo?</AlertDialogTitle>
-            <AlertDialogDescription>
-              Esto reemplaza el inventario, las existencias y las ventas guardadas en este
-              navegador.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancelar</AlertDialogCancel>
-            <AlertDialogAction
-              onClick={() => {
-                inventory.restoreDemo();
-                setPendingRestore(false);
-                setNotice(null);
-              }}
-            >
-              Restaurar
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   );
 }

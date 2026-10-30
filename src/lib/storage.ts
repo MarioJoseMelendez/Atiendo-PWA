@@ -1,7 +1,7 @@
-import { createSeed } from "./seed";
 import type { Group, Product, Sale, SaleKind, Store } from "./types";
 
-const KEY = "estante.v1";
+const KEY = "atiendo.v1";
+const LEGACY_KEY = "estante.v1";
 
 function isKind(value: unknown): value is SaleKind {
   return value === "individual" || value === "paquete";
@@ -64,10 +64,18 @@ export function isStore(value: unknown): value is Store {
 
 export function loadStore(): Store | null {
   try {
-    const raw = localStorage.getItem(KEY);
+    const current = localStorage.getItem(KEY);
+    const raw = current ?? localStorage.getItem(LEGACY_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (!isStore(parsed)) return null;
+    if (!current) {
+      try {
+        localStorage.setItem(KEY, raw);
+      } catch {
+        // Sin espacio: se sigue usando el inventario viejo.
+      }
+    }
     return parsed;
   } catch {
     return null;
@@ -76,8 +84,4 @@ export function loadStore(): Store | null {
 
 export function saveStore(store: Store): void {
   localStorage.setItem(KEY, JSON.stringify(store));
-}
-
-export function storeOrSeed(value: unknown): Store {
-  return isStore(value) ? value : createSeed();
 }

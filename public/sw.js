@@ -1,6 +1,7 @@
-const CACHE = "estante-shell-v1";
+const CACHE = "atiendo-shell-v3";
 const PRECACHE = [
   "/",
+  "/cargar",
   "/caja",
   "/etiquetas",
   "/manifest.webmanifest",

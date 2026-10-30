@@ -17,15 +17,15 @@ const fraunces = Fraunces({
 });
 
 export const metadata: Metadata = {
-  applicationName: "Estante",
+  applicationName: "Atiendo",
   title: {
-    default: "Estante",
-    template: "%s · Estante",
+    default: "Atiendo",
+    template: "%s · Atiendo",
   },
   description: "Inventario, etiquetas QR y caja en efectivo para la librería.",
   appleWebApp: {
     capable: true,
-    title: "Estante",
+    title: "Atiendo",
     statusBarStyle: "default",
   },
   formatDetection: { telephone: false },
@@ -53,7 +53,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       className={`${outfit.variable} ${fraunces.variable} h-full antialiased`}
     >
       <body className="min-h-dvh">
-        <Suspense fallback={<p className="p-8 text-sm text-[#645c52]">Abriendo el estante…</p>}>
+        <Suspense fallback={<p className="p-8 text-sm text-[#645c52]">Abriendo Atiendo…</p>}>
           <AppShell>{children}</AppShell>
         </Suspense>
       </body>

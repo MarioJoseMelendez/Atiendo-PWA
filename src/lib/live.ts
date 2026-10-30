@@ -45,7 +45,9 @@ function installKey(): string {
     window.matchMedia("(display-mode: standalone)").matches ||
     ("standalone" in navigator &&
       (navigator as Navigator & { standalone?: boolean }).standalone === true);
-  const dismissed = localStorage.getItem("estante.hideInstallHint") === "1";
+  const dismissed =
+    localStorage.getItem("atiendo.hideInstallHint") === "1" ||
+    localStorage.getItem("estante.hideInstallHint") === "1";
   if (standalone || dismissed) return INSTALL_HIDDEN;
   return installReady ? "ready" : "hint";
 }
@@ -57,12 +59,12 @@ function subscribeInstall(callback: () => void): () => void {
   };
   const media = window.matchMedia("(display-mode: standalone)");
   const id = window.setTimeout(callback, 0);
-  window.addEventListener("estante-install-hint", callback);
+  window.addEventListener("atiendo-install-hint", callback);
   window.addEventListener("beforeinstallprompt", onPrompt);
   media.addEventListener("change", callback);
   return () => {
     window.clearTimeout(id);
-    window.removeEventListener("estante-install-hint", callback);
+    window.removeEventListener("atiendo-install-hint", callback);
     window.removeEventListener("beforeinstallprompt", onPrompt);
     media.removeEventListener("change", callback);
   };
@@ -75,6 +77,6 @@ export function useInstallHint(): "hidden" | "ready" | "hint" {
 }
 
 export function dismissInstallHint(): void {
-  localStorage.setItem("estante.hideInstallHint", "1");
-  window.dispatchEvent(new Event("estante-install-hint"));
+  localStorage.setItem("atiendo.hideInstallHint", "1");
+  window.dispatchEvent(new Event("atiendo-install-hint"));
 }
