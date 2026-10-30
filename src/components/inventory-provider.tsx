@@ -1,6 +1,13 @@
 "use client";
 
-import { createContext, useContext, useMemo, useSyncExternalStore, type ReactNode } from "react";
+import {
+  createContext,
+  useContext,
+  useEffect,
+  useMemo,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { guatemalaDayKey, guatemalaStamp } from "@/lib/dates";
 import {
   adjustStock,
@@ -12,6 +19,7 @@ import {
 } from "@/lib/inventory";
 import { createEmptyStore } from "@/lib/empty-store";
 import { importInventoryDraft, type InventoryDraft } from "@/lib/import";
+import { fetchRemoteDb, pushStore } from "@/lib/remote";
 import { loadStore, saveStore } from "@/lib/storage";
 import type { CartLine, GroupInput, ProductInput, Sale, Store } from "@/lib/types";
 
@@ -34,6 +42,7 @@ type InventoryContextValue = {
 
 const SERVER_STORE = createEmptyStore();
 let clientStore: Store | null = null;
+let localWrites = 0;
 
 function readClientStore(): Store {
   if (!clientStore) clientStore = loadStore() ?? createEmptyStore();
@@ -41,9 +50,11 @@ function readClientStore(): Store {
 }
 
 function writeClientStore(next: Store): void {
+  localWrites += 1;
   clientStore = next;
   saveStore(next);
   window.dispatchEvent(new Event("atiendo-store"));
+  void pushStore(next);
 }
 
 function subscribeStore(callback: () => void): () => void {
@@ -59,6 +70,26 @@ const InventoryContext = createContext<InventoryContextValue | null>(null);
 
 export function InventoryProvider({ children }: { children: ReactNode }) {
   const store = useSyncExternalStore(subscribeStore, readClientStore, () => SERVER_STORE);
+
+  useEffect(() => {
+    let cancelled = false;
+    const local = loadStore();
+    if (local) {
+      void pushStore(local);
+      return () => {
+        cancelled = true;
+      };
+    }
+    void fetchRemoteDb().then((remote) => {
+      if (cancelled || localWrites > 0 || !remote?.store) return;
+      clientStore = remote.store;
+      saveStore(remote.store);
+      window.dispatchEvent(new Event("atiendo-store"));
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const value = useMemo<InventoryContextValue>(() => {
     const commit = (next: Store) => writeClientStore(next);

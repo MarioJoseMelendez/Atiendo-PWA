@@ -1,4 +1,4 @@
-const CACHE = "atiendo-shell-v3";
+const CACHE = "atiendo-shell-v4";
 const PRECACHE = [
   "/",
   "/cargar",
@@ -38,6 +38,7 @@ self.addEventListener("fetch", (event) => {
 
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (url.pathname.startsWith("/api/")) return;
   if (
     url.pathname.startsWith("/_next/webpack") ||
     url.pathname.includes("hmr") ||

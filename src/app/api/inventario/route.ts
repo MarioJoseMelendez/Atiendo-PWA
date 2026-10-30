@@ -1,7 +1,8 @@
-import { parseInventoryDraft } from "@/lib/import";
+import { isProvider, providerOrder, type Provider } from "@/lib/ai";
+import { parseInventoryDraft, type InventoryDraft } from "@/lib/import";
+import { getDb, saveKey } from "@/lib/server-db";
+import type { Store } from "@/lib/types";
 
-const NVIDIA_URL = "https://integrate.api.nvidia.com/v1/chat/completions";
-const DEFAULT_MODEL = "nvidia/llama-3.1-nemotron-70b-instruct";
 const MAX_TEXT = 20_000;
 const MAX_EXISTING = 200;
 
@@ -25,11 +26,47 @@ type ExistingProduct = {
   packageSize?: unknown;
 };
 
+type ProviderConfig = {
+  label: string;
+  url: string;
+  defaultModel: string;
+  envKey: string;
+  envModel: string;
+  extraHeaders?: (request: Request) => Record<string, string>;
+};
+
+const PROVIDERS: Record<Provider, ProviderConfig> = {
+  nvidia: {
+    label: "NVIDIA",
+    url: "https://integrate.api.nvidia.com/v1/chat/completions",
+    defaultModel: "nvidia/llama-3.1-nemotron-70b-instruct",
+    envKey: "NVIDIA_API_KEY",
+    envModel: "NVIDIA_MODEL",
+  },
+  openrouter: {
+    label: "OpenRouter",
+    url: "https://openrouter.ai/api/v1/chat/completions",
+    defaultModel: "openrouter/auto",
+    envKey: "OPENROUTER_API_KEY",
+    envModel: "OPENROUTER_MODEL",
+    extraHeaders: (request) => ({
+      "HTTP-Referer": new URL(request.url).origin,
+      "X-Title": "Atiendo",
+    }),
+  },
+};
+
 type RequestBody = {
   text?: unknown;
+  provider?: unknown;
   apiKey?: unknown;
+  apiKeys?: { nvidia?: unknown; openrouter?: unknown };
   existing?: unknown;
 };
+
+type Attempt =
+  | { ok: true; draft: InventoryDraft }
+  | { ok: false; error: string };
 
 function buildExistingText(value: unknown): string {
   if (!value || typeof value !== "object") return "";
@@ -60,17 +97,100 @@ function buildExistingText(value: unknown): string {
   }\nArtículos: ${products.join(", ") || "(ninguno)"}`;
 }
 
-function nvidiaError(status: number): string {
+function existingFromStore(store: Store | null): unknown {
+  if (!store) return undefined;
+  return {
+    groups: store.groups.map((group) => group.name),
+    products: store.products.map((product) => ({
+      name: product.name,
+      kind: product.kind,
+      packageSize: product.packageSize,
+    })),
+  };
+}
+
+function providerError(provider: Provider, status: number): string {
+  const label = PROVIDERS[provider].label;
   if (status === 401 || status === 403) {
-    return "La clave de NVIDIA no es válida o no tiene permiso.";
+    return `La clave de ${label} no es válida o no tiene permiso.`;
   }
   if (status === 429) {
-    return "NVIDIA está limitando las solicitudes. Espera un momento y vuelve a intentar.";
+    return `${label} está limitando las solicitudes. Espera un momento y vuelve a intentar.`;
   }
   if (status === 404) {
-    return "El modelo de NVIDIA configurado no está disponible.";
+    return `El modelo de ${label} configurado no está disponible.`;
   }
-  return `NVIDIA respondió con un error (${status}). Intenta de nuevo.`;
+  return `${label} respondió con un error (${status}). Intenta de nuevo.`;
+}
+
+async function attemptDraft(
+  provider: Provider,
+  key: string,
+  model: string,
+  userContent: string,
+  request: Request,
+): Promise<Attempt> {
+  const config = PROVIDERS[provider];
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    Accept: "application/json",
+    Authorization: `Bearer ${key}`,
+    ...(config.extraHeaders ? config.extraHeaders(request) : {}),
+  };
+
+  let response: Response;
+  try {
+    response = await fetch(config.url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: userContent },
+        ],
+        temperature: 0.2,
+        top_p: 0.9,
+        max_tokens: 2048,
+        stream: false,
+      }),
+      signal: AbortSignal.timeout(45_000),
+    });
+  } catch (error) {
+    const timedOut = error instanceof Error && error.name === "TimeoutError";
+    return {
+      ok: false,
+      error: timedOut
+        ? `${config.label} tardó demasiado en responder.`
+        : `No se pudo conectar con ${config.label}.`,
+    };
+  }
+
+  if (!response.ok) {
+    return { ok: false, error: providerError(provider, response.status) };
+  }
+
+  let content: string | undefined;
+  try {
+    const payload = (await response.json()) as {
+      choices?: { message?: { content?: unknown } }[];
+    };
+    const raw = payload.choices?.[0]?.message?.content;
+    content = typeof raw === "string" ? raw : undefined;
+  } catch {
+    return { ok: false, error: `${config.label} devolvió una respuesta que no se pudo leer.` };
+  }
+
+  if (!content) {
+    return { ok: false, error: `${config.label} no devolvió contenido.` };
+  }
+
+  const parsed = parseInventoryDraft(content);
+  if (!parsed.ok) {
+    return { ok: false, error: `${config.label}: ${parsed.error}` };
+  }
+
+  return { ok: true, draft: parsed.draft };
 }
 
 export async function POST(request: Request) {
@@ -92,90 +212,74 @@ export async function POST(request: Request) {
     );
   }
 
-  const apiKey =
-    (typeof body.apiKey === "string" ? body.apiKey.trim() : "") ||
-    (process.env.NVIDIA_API_KEY ?? "").trim();
-  if (!apiKey) {
+  const apiKeys =
+    body.apiKeys && typeof body.apiKeys === "object" ? body.apiKeys : {};
+  const legacyNvidia = typeof body.apiKey === "string" ? body.apiKey.trim() : "";
+  const provided: Partial<Record<Provider, string>> = {
+    nvidia: (typeof apiKeys.nvidia === "string" ? apiKeys.nvidia.trim() : "") || legacyNvidia,
+    openrouter:
+      typeof apiKeys.openrouter === "string" ? apiKeys.openrouter.trim() : "",
+  };
+
+  const db = await getDb();
+
+  await Promise.all(
+    (Object.entries(provided) as [Provider, string][])
+      .filter(([, key]) => key.length > 0)
+      .map(([provider, key]) => saveKey(provider, key).catch(() => undefined)),
+  );
+
+  const keys: Record<Provider, string> = {
+    nvidia:
+      provided.nvidia ||
+      db.keys.nvidia?.trim() ||
+      (process.env.NVIDIA_API_KEY ?? "").trim(),
+    openrouter:
+      provided.openrouter ||
+      db.keys.openrouter?.trim() ||
+      (process.env.OPENROUTER_API_KEY ?? "").trim(),
+  };
+
+  const preferred: Provider = isProvider(body.provider) ? body.provider : "openrouter";
+  const available = providerOrder(preferred, keys);
+
+  if (available.length === 0) {
     return Response.json(
       {
         ok: false,
         error:
-          "Falta la clave de NVIDIA. Pégala en esta página o define NVIDIA_API_KEY en .env.local.",
+          "Falta una clave de IA. Pega la de NVIDIA u OpenRouter en esta página o define NVIDIA_API_KEY u OPENROUTER_API_KEY en .env.local.",
       },
       { status: 503 },
     );
   }
 
-  const model = (process.env.NVIDIA_MODEL ?? "").trim() || DEFAULT_MODEL;
-  const userContent = `${text}${buildExistingText(body.existing)}`;
+  const userContent = `${text}${buildExistingText(
+    body.existing ?? existingFromStore(db.store),
+  )}`;
 
-  let response: Response;
-  try {
-    response = await fetch(NVIDIA_URL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Accept: "application/json",
-        Authorization: `Bearer ${apiKey}`,
-      },
-      body: JSON.stringify({
+  const errors: string[] = [];
+  for (const provider of available) {
+    const config = PROVIDERS[provider];
+    const model = (process.env[config.envModel] ?? "").trim() || config.defaultModel;
+    const result = await attemptDraft(provider, keys[provider], model, userContent, request);
+    if (result.ok) {
+      return Response.json({
+        ok: true,
+        draft: result.draft,
+        provider,
         model,
-        messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: userContent },
-        ],
-        temperature: 0.2,
-        top_p: 0.9,
-        max_tokens: 2048,
-        stream: false,
-      }),
-      signal: AbortSignal.timeout(45_000),
-    });
-  } catch (error) {
-    const timedOut = error instanceof Error && error.name === "TimeoutError";
-    return Response.json(
-      {
-        ok: false,
-        error: timedOut
-          ? "NVIDIA tardó demasiado en responder. Intenta con una lista más corta."
-          : "No se pudo conectar con NVIDIA. Revisa la conexión a internet.",
-      },
-      { status: 504 },
-    );
+        fallback: provider !== preferred,
+      });
+    }
+    errors.push(result.error);
   }
 
-  if (!response.ok) {
-    return Response.json({ ok: false, error: nvidiaError(response.status) }, { status: 502 });
-  }
-
-  let content: string | undefined;
-  try {
-    const payload = (await response.json()) as {
-      choices?: { message?: { content?: unknown } }[];
-    };
-    const raw = payload.choices?.[0]?.message?.content;
-    content = typeof raw === "string" ? raw : undefined;
-  } catch {
-    return Response.json(
-      { ok: false, error: "NVIDIA devolvió una respuesta que no se pudo leer." },
-      { status: 502 },
-    );
-  }
-
-  if (!content) {
-    return Response.json(
-      { ok: false, error: "NVIDIA no devolvió contenido. Intenta de nuevo." },
-      { status: 502 },
-    );
-  }
-
-  const parsed = parseInventoryDraft(content);
-  if (!parsed.ok) {
-    return Response.json(
-      { ok: false, error: parsed.error, raw: content.slice(0, 2000) },
-      { status: 422 },
-    );
-  }
-
-  return Response.json({ ok: true, draft: parsed.draft, model });
+  return Response.json(
+    {
+      ok: false,
+      error: `No se pudo interpretar la lista. ${errors.join(" ")}`,
+    },
+    { status: 502 },
+  );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -22,25 +22,58 @@ import {
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import {
+  isProvider,
+  maskKey,
+  type KeyStatuses,
+  type Provider,
+} from "@/lib/ai";
 import type { DraftProduct, InventoryDraft } from "@/lib/import";
 import { unitPhrase } from "@/lib/inventory";
 import { formatQ } from "@/lib/money";
+import { fetchRemoteDb, saveRemoteKey } from "@/lib/remote";
 
-const KEY_STORAGE = "atiendo.nvidia.key";
+const KEY_STORAGE: Record<Provider, string> = {
+  nvidia: "atiendo.nvidia.key",
+  openrouter: "atiendo.openrouter.key",
+};
 const LEGACY_KEY_STORAGE = "estante.nvidia.key";
 
-function subscribeKey(callback: () => void): () => void {
-  window.addEventListener("storage", callback);
-  return () => window.removeEventListener("storage", callback);
-}
+const PROVIDER_LABEL: Record<Provider, string> = {
+  nvidia: "NVIDIA",
+  openrouter: "OpenRouter",
+};
+const PROVIDER_PLACEHOLDER: Record<Provider, string> = {
+  nvidia: "nvapi-...",
+  openrouter: "sk-or-v1-...",
+};
+const PROVIDER_URL: Record<Provider, string> = {
+  nvidia: "https://build.nvidia.com",
+  openrouter: "https://openrouter.ai/keys",
+};
 
-function readSavedKey(): string {
+const EMPTY_STATUS: KeyStatuses = {
+  nvidia: { configured: false, hint: "" },
+  openrouter: { configured: false, hint: "" },
+};
+
+function readCachedKey(provider: Provider): string {
   try {
     return (
-      localStorage.getItem(KEY_STORAGE) ?? localStorage.getItem(LEGACY_KEY_STORAGE) ?? ""
+      localStorage.getItem(KEY_STORAGE[provider]) ??
+      (provider === "nvidia" ? localStorage.getItem(LEGACY_KEY_STORAGE) : null) ??
+      ""
     );
   } catch {
     return "";
+  }
+}
+
+function cacheKey(provider: Provider, value: string): void {
+  try {
+    localStorage.setItem(KEY_STORAGE[provider], value);
+  } catch {
+    // Sin almacenamiento, la clave queda solo en la base local.
   }
 }
 
@@ -49,7 +82,13 @@ Lápiz Mongol: Q2.50 cada uno, hay 48; el paquete de 12 cuesta Q24 y tengo 15 pa
 Cuaderno cosido 100 hojas: Q18 cada uno, 30; el paquete de 5 a Q80, 10 paquetes.`;
 
 type DraftResponse =
-  | { ok: true; draft: InventoryDraft }
+  | {
+      ok: true;
+      draft: InventoryDraft;
+      provider: Provider;
+      model: string;
+      fallback: boolean;
+    }
   | { ok: false; error: string; raw?: string };
 
 function isDraftResponse(value: unknown): value is DraftResponse {
@@ -59,7 +98,12 @@ function isDraftResponse(value: unknown): value is DraftResponse {
     const draft = record.draft;
     if (!draft || typeof draft !== "object") return false;
     const candidate = draft as InventoryDraft;
-    return typeof candidate.summary === "string" && Array.isArray(candidate.products);
+    return (
+      typeof candidate.summary === "string" &&
+      Array.isArray(candidate.products) &&
+      isProvider(record.provider) &&
+      typeof record.fallback === "boolean"
+    );
   }
   return record.ok === false && typeof record.error === "string";
 }
@@ -67,22 +111,69 @@ function isDraftResponse(value: unknown): value is DraftResponse {
 export function Cargar() {
   const { ready, store, importDraft } = useInventory();
   const [text, setText] = useState("");
-  const savedKey = useSyncExternalStore(subscribeKey, readSavedKey, () => "");
-  const [keyDraft, setKeyDraft] = useState<string | null>(null);
-  const apiKey = keyDraft ?? savedKey;
+  const [provider, setProvider] = useState<Provider>("openrouter");
+  const [keys, setKeys] = useState<Record<Provider, string>>({
+    nvidia: "",
+    openrouter: "",
+  });
+  const [keyStatus, setKeyStatus] = useState<KeyStatuses>(EMPTY_STATUS);
+  const [savingKey, setSavingKey] = useState<Provider | null>(null);
+  const [keyNotice, setKeyNotice] = useState<string | null>(null);
   const [showKey, setShowKey] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [draft, setDraft] = useState<InventoryDraft | null>(null);
+  const [used, setUsed] = useState<{ provider: Provider; fallback: boolean } | null>(
+    null,
+  );
   const [result, setResult] = useState<string | null>(null);
 
-  function updateKey(value: string) {
-    setKeyDraft(value);
-    try {
-      localStorage.setItem(KEY_STORAGE, value);
-    } catch {
-      // Sin almacenamiento, la clave solo vive en esta pantalla.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const remote = await fetchRemoteDb();
+      if (cancelled) return;
+      if (remote) setKeyStatus(remote.keys);
+      for (const item of ["nvidia", "openrouter"] as const) {
+        if (remote?.keys[item].configured) continue;
+        const cached = readCachedKey(item);
+        if (!cached) continue;
+        const statuses = await saveRemoteKey(item, cached);
+        if (cancelled) return;
+        if (statuses) setKeyStatus(statuses);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  function updateKey(item: Provider, value: string) {
+    setKeys((prev) => ({ ...prev, [item]: value }));
+    setKeyNotice(null);
+  }
+
+  async function saveKey(item: Provider) {
+    const value = keys[item].trim();
+    if (!value) {
+      setKeyNotice("Escribe una clave nueva para cambiarla. La guardada no se borra.");
+      return;
     }
+    setSavingKey(item);
+    setError(null);
+    setKeyNotice(null);
+    const statuses = await saveRemoteKey(item, value);
+    setSavingKey(null);
+    if (!statuses) {
+      setError(
+        `No se pudo guardar la clave de ${PROVIDER_LABEL[item]}. Revisa que la app siga corriendo.`,
+      );
+      return;
+    }
+    cacheKey(item, value);
+    setKeyStatus(statuses);
+    setKeys((prev) => ({ ...prev, [item]: "" }));
+    setKeyNotice(`${PROVIDER_LABEL[item]} guardada en la base local.`);
   }
 
   const sections = useMemo(() => {
@@ -101,17 +192,31 @@ export function Cargar() {
       setError("Pega o escribe la lista de productos primero.");
       return;
     }
+    for (const item of ["nvidia", "openrouter"] as const) {
+      const value = keys[item].trim();
+      if (!value) continue;
+      cacheKey(item, value);
+      setKeyStatus((prev) => ({
+        ...prev,
+        [item]: { configured: true, hint: maskKey(value) },
+      }));
+    }
     setBusy(true);
     setError(null);
     setResult(null);
     setDraft(null);
+    setUsed(null);
     try {
       const response = await fetch("/api/inventario", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           text,
-          apiKey: apiKey.trim() || undefined,
+          provider,
+          apiKeys: {
+            nvidia: keys.nvidia.trim() || undefined,
+            openrouter: keys.openrouter.trim() || undefined,
+          },
           existing: {
             groups: store.groups.map((group) => group.name),
             products: store.products.map((product) => ({
@@ -132,6 +237,7 @@ export function Cargar() {
         return;
       }
       setDraft(payload.draft);
+      setUsed({ provider: payload.provider, fallback: payload.fallback });
     } catch {
       setError("No se pudo conectar con el servidor. Revisa que la app siga corriendo.");
     } finally {
@@ -162,6 +268,7 @@ export function Cargar() {
     }
     setResult(parts.join(" "));
     setDraft(null);
+    setUsed(null);
     setText("");
   }
 
@@ -172,7 +279,7 @@ export function Cargar() {
           <h1 className="font-heading text-3xl tracking-tight">Carga rápida</h1>
           <Badge variant="secondary">
             <Sparkles />
-            NVIDIA
+            IA
           </Badge>
         </div>
         <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
@@ -206,6 +313,7 @@ export function Cargar() {
                 setText(EXAMPLE);
                 setError(null);
                 setDraft(null);
+                setUsed(null);
               }}
             >
               Usar un ejemplo
@@ -217,6 +325,7 @@ export function Cargar() {
                 onClick={() => {
                   setText("");
                   setDraft(null);
+                  setUsed(null);
                   setError(null);
                 }}
               >
@@ -230,44 +339,103 @@ export function Cargar() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2 font-heading text-lg">
-            <KeyRound className="size-4" />
-            2. Clave de NVIDIA
-          </CardTitle>
+          <CardTitle className="font-heading text-lg">2. Proveedor de IA</CardTitle>
           <CardDescription>
-            Se guarda solo en este navegador. Consíguela en{" "}
-            <a
-              href="https://build.nvidia.com"
-              target="_blank"
-              rel="noreferrer"
-              className="underline underline-offset-2"
-            >
-              build.nvidia.com
-            </a>
-            .
+            Si el proveedor preferido falla, se intenta con el otro. Si solo tienes una clave, se
+            usa esa.
           </CardDescription>
         </CardHeader>
-        <CardContent className="grid gap-2">
-          <Label htmlFor="nvidia-key">API key</Label>
-          <div className="flex gap-2">
-            <Input
-              id="nvidia-key"
-              type={showKey ? "text" : "password"}
-              value={apiKey}
-              onChange={(event) => updateKey(event.target.value)}
-              placeholder="nvapi-..."
-              autoComplete="off"
-              spellCheck={false}
-              className="h-10 font-mono"
-            />
+        <CardContent className="grid gap-3">
+          <div className="flex flex-wrap gap-2">
+            {(["openrouter", "nvidia"] as const).map((item) => (
+              <Button
+                key={item}
+                type="button"
+                variant={provider === item ? "default" : "outline"}
+                onClick={() => setProvider(item)}
+              >
+                {PROVIDER_LABEL[item]}
+              </Button>
+            ))}
+          </div>
+          <p className="text-xs text-muted-foreground">
+            Preferido: {PROVIDER_LABEL[provider]}. El otro se usa como respaldo si tiene clave.
+          </p>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 font-heading text-lg">
+            <KeyRound className="size-4" />
+            3. Claves de IA
+          </CardTitle>
+          <CardDescription>
+            Se guardan en la base local de la app, no solo en el navegador. No hay botón para
+            borrarlas.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="grid gap-4">
+          {(["openrouter", "nvidia"] as const).map((item) => (
+            <div key={item} className="grid gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <Label htmlFor={`${item}-key`}>{PROVIDER_LABEL[item]}</Label>
+                <span className="text-xs text-muted-foreground">
+                  {keyStatus[item].configured
+                    ? `Guardada ${keyStatus[item].hint}`
+                    : "Sin clave"}
+                </span>
+              </div>
+              <div className="flex gap-2">
+                <Input
+                  id={`${item}-key`}
+                  type={showKey ? "text" : "password"}
+                  value={keys[item]}
+                  onChange={(event) => updateKey(item, event.target.value)}
+                  placeholder={
+                    keyStatus[item].configured
+                      ? "Escribe una nueva para cambiarla"
+                      : PROVIDER_PLACEHOLDER[item]
+                  }
+                  autoComplete="off"
+                  spellCheck={false}
+                  className="h-10 font-mono"
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  className="h-10"
+                  onClick={() => void saveKey(item)}
+                  disabled={savingKey !== null || !keys[item].trim()}
+                >
+                  {savingKey === item ? <Loader2 className="animate-spin" /> : "Guardar"}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Consíguela en{" "}
+                <a
+                  href={PROVIDER_URL[item]}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="underline underline-offset-2"
+                >
+                  {PROVIDER_URL[item].replace("https://", "")}
+                </a>
+                .
+              </p>
+            </div>
+          ))}
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <Button
               type="button"
               variant="outline"
-              className="h-10"
               onClick={() => setShowKey((value) => !value)}
             >
-              {showKey ? "Ocultar" : "Mostrar"}
+              {showKey ? "Ocultar claves" : "Mostrar claves"}
             </Button>
+            {keyNotice ? (
+              <p className="text-xs text-muted-foreground">{keyNotice}</p>
+            ) : null}
           </div>
         </CardContent>
       </Card>
@@ -294,14 +462,23 @@ export function Cargar() {
           disabled={busy || !ready || text.trim().length === 0}
         >
           {busy ? <Loader2 className="animate-spin" /> : <Wand2 />}
-          {busy ? "Leyendo la lista…" : "Interpretar con NVIDIA"}
+          {busy ? "Leyendo la lista…" : "Interpretar la lista"}
         </Button>
       </div>
 
       {draft ? (
         <Card>
           <CardHeader>
-            <CardTitle className="font-heading text-lg">Revisa antes de cargar</CardTitle>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <CardTitle className="font-heading text-lg">Revisa antes de cargar</CardTitle>
+              {used ? (
+                <Badge variant="secondary">
+                  <Sparkles />
+                  {PROVIDER_LABEL[used.provider]}
+                  {used.fallback ? " (respaldo)" : ""}
+                </Badge>
+              ) : null}
+            </div>
             <CardDescription>{draft.summary}</CardDescription>
           </CardHeader>
           <CardContent className="grid gap-4">
@@ -340,7 +517,14 @@ export function Cargar() {
               Se agregan al inventario actual; no se borra nada.
             </p>
             <div className="flex gap-2">
-              <Button type="button" variant="outline" onClick={() => setDraft(null)}>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setDraft(null);
+                  setUsed(null);
+                }}
+              >
                 Descartar
               </Button>
               <Button type="button" className="h-10" onClick={load}>

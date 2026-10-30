@@ -2,7 +2,7 @@
 
 Inventario y caja para una librería. Cada artículo es **individual** o **paquete** (con su tamaño), tiene su propio precio en quetzales, y se puede etiquetar con un QR. La caja cobra solo en efectivo, escaneando ese QR con la cámara.
 
-Los datos se quedan en este navegador. No hay cuentas ni servidor de inventario.
+El inventario, las ventas y las claves de IA se guardan en una base local (`~/.local/share/atiendo/atiendo.json`, configurable con `ATIENDO_DB_PATH`). También hay una copia en el navegador para que la app siga funcionando sin conexión. La app no tiene un botón para borrar las claves ni la base local: sobreviven aunque borres los datos del navegador. El inventario se edita o se borra artículo por artículo. No hay cuentas.
 
 ## Cómo usarla
 
@@ -13,17 +13,19 @@ Los datos se quedan en este navegador. No hay cuentas ni servidor de inventario.
 
 La app arranca vacía. Carga tus productos desde **Carga IA** o créalos uno por uno en **Inventario**.
 
-## Carga rápida con IA (NVIDIA)
+## Carga rápida con IA (OpenRouter y NVIDIA)
 
-En **Carga IA** puedes pegar una lista, una factura o describir el inventario. NVIDIA lo convierte en artículos y tú revisas antes de cargarlos. Entiende el mismo producto en dos presentaciones, por ejemplo hoja suelta y ciento:
+En **Carga IA** puedes pegar una lista, una factura o describir el inventario. La IA lo convierte en artículos y tú revisas antes de cargarlos. Entiende el mismo producto en dos presentaciones, por ejemplo hoja suelta y ciento:
 
 > Hoja carta: la hoja a Q0.25 y el ciento a Q20. Tengo 300 hojas sueltas y 5 cientos.
 
-Necesitas una API key de [build.nvidia.com](https://build.nvidia.com). Pégala en la misma página; se guarda solo en este navegador. También puedes definirla en `.env.local`:
+Puedes usar una clave de [OpenRouter](https://openrouter.ai/keys) o de [build.nvidia.com](https://build.nvidia.com). Si tienes las dos, la app usa la que elijas como preferida y la otra como respaldo; si solo tienes una, usa esa. Las claves se guardan en la base local de la app y no se borran desde la interfaz. También puedes definirlas en `.env.local`:
 
 ```bash
+OPENROUTER_API_KEY=sk-or-v1-...
 NVIDIA_API_KEY=nvapi-...
-# opcional
+# opcionales
+OPENROUTER_MODEL=openrouter/auto
 NVIDIA_MODEL=nvidia/llama-3.1-nemotron-70b-instruct
 ```
 
