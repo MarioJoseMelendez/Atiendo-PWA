@@ -22,7 +22,7 @@ export const metadata: Metadata = {
     default: "Atiendo",
     template: "%s · Atiendo",
   },
-  description: "Inventario, etiquetas QR y caja en efectivo para la librería.",
+  description: "Inventario, etiquetas QR, caja y chat para tu negocio.",
   appleWebApp: {
     capable: true,
     title: "Atiendo",

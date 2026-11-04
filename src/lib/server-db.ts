@@ -2,6 +2,15 @@ import { promises as fs } from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import type { Provider } from "./ai";
+import {
+  appendChat,
+  clearChat,
+  emptyChats,
+  readChats,
+  type ChatLog,
+  type ChatMessage,
+  type ChatScope,
+} from "./chat";
 import { isStore } from "./storage";
 import type { Store } from "./types";
 
@@ -11,6 +20,7 @@ export type Db = {
   version: 1;
   keys: DbKeys;
   store: Store | null;
+  chats: ChatLog;
   updatedAt: string;
 };
 
@@ -58,11 +68,18 @@ async function readDb(): Promise<Db> {
       version: 1,
       keys: readKeys(record.keys),
       store: isStore(record.store) ? record.store : null,
+      chats: readChats(record.chats),
       updatedAt:
         typeof record.updatedAt === "string" ? record.updatedAt : new Date().toISOString(),
     };
   } catch {
-    return { version: 1, keys: {}, store: null, updatedAt: new Date().toISOString() };
+    return {
+      version: 1,
+      keys: {},
+      store: null,
+      chats: emptyChats(),
+      updatedAt: new Date().toISOString(),
+    };
   }
 }
 
@@ -95,6 +112,28 @@ export function saveStore(store: Store): Promise<void> {
   return enqueue(async () => {
     const db = await readDb();
     db.store = store;
+    db.updatedAt = new Date().toISOString();
+    await writeDb(db);
+  });
+}
+
+export function appendChatMessages(
+  scope: ChatScope,
+  messages: ChatMessage[],
+): Promise<void> {
+  if (messages.length === 0) return Promise.resolve();
+  return enqueue(async () => {
+    const db = await readDb();
+    db.chats = appendChat(db.chats, scope, messages);
+    db.updatedAt = new Date().toISOString();
+    await writeDb(db);
+  });
+}
+
+export function clearChatMessages(scope: ChatScope): Promise<void> {
+  return enqueue(async () => {
+    const db = await readDb();
+    db.chats = clearChat(db.chats, scope);
     db.updatedAt = new Date().toISOString();
     await writeDb(db);
   });

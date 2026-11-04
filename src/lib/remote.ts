@@ -15,8 +15,13 @@ const EMPTY_KEYS: KeyStatuses = {
 };
 
 export async function fetchRemoteDb(): Promise<RemoteDb | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
-    const response = await fetch("/api/db", { cache: "no-store" });
+    const response = await fetch("/api/db", {
+      cache: "no-store",
+      signal: controller.signal,
+    });
     if (!response.ok) return null;
     const payload: unknown = await response.json();
     if (!payload || typeof payload !== "object") return null;
@@ -30,21 +35,28 @@ export async function fetchRemoteDb(): Promise<RemoteDb | null> {
     };
   } catch {
     return null;
+  } finally {
+    clearTimeout(timer);
   }
 }
 
 export async function pushStore(store: Store): Promise<boolean> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 5000);
   try {
     const body = JSON.stringify({ store });
     const response = await fetch("/api/db", {
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body,
+      signal: controller.signal,
       keepalive: body.length < 60_000,
     });
     return response.ok;
   } catch {
     return false;
+  } finally {
+    clearTimeout(timer);
   }
 }
 

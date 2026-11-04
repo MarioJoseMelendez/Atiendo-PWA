@@ -5,6 +5,7 @@ import {
   useContext,
   useEffect,
   useMemo,
+  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -70,22 +71,29 @@ const InventoryContext = createContext<InventoryContextValue | null>(null);
 
 export function InventoryProvider({ children }: { children: ReactNode }) {
   const store = useSyncExternalStore(subscribeStore, readClientStore, () => SERVER_STORE);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     const local = loadStore();
     if (local) {
-      void pushStore(local);
+      void pushStore(local).finally(() => {
+        if (!cancelled) setHydrated(true);
+      });
       return () => {
         cancelled = true;
       };
     }
-    void fetchRemoteDb().then((remote) => {
-      if (cancelled || localWrites > 0 || !remote?.store) return;
-      clientStore = remote.store;
-      saveStore(remote.store);
-      window.dispatchEvent(new Event("atiendo-store"));
-    });
+    void fetchRemoteDb()
+      .then((remote) => {
+        if (cancelled || localWrites > 0 || !remote?.store) return;
+        clientStore = remote.store;
+        saveStore(remote.store);
+        window.dispatchEvent(new Event("atiendo-store"));
+      })
+      .finally(() => {
+        if (!cancelled) setHydrated(true);
+      });
     return () => {
       cancelled = true;
     };
@@ -94,7 +102,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
   const value = useMemo<InventoryContextValue>(() => {
     const commit = (next: Store) => writeClientStore(next);
     return {
-      ready: true,
+      ready: hydrated,
       store,
       saveGroupDraft: (input, id) => {
         const result = saveGroup(readClientStore(), input, {
@@ -153,7 +161,7 @@ export function InventoryProvider({ children }: { children: ReactNode }) {
         return { ok: true, sale: result.sale };
       },
     };
-  }, [store]);
+  }, [hydrated, store]);
 
   return <InventoryContext.Provider value={value}>{children}</InventoryContext.Provider>;
 }

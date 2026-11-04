@@ -1,6 +1,7 @@
-const CACHE = "atiendo-shell-v4";
+const CACHE = "atiendo-shell-v5";
 const PRECACHE = [
   "/",
+  "/chat",
   "/cargar",
   "/caja",
   "/etiquetas",

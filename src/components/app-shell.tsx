@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { Banknote, BookOpen, QrCode, Sparkles } from "lucide-react";
+import { Banknote, BookOpen, MessageCircle, QrCode } from "lucide-react";
 import type { ReactNode } from "react";
 import { InventoryProvider } from "@/components/inventory-provider";
 import { InstallHint, PwaRegister } from "@/components/pwa-register";
@@ -10,7 +10,7 @@ import { cn } from "@/lib/utils";
 
 const NAV = [
   { href: "/", label: "Inventario", icon: BookOpen },
-  { href: "/cargar", label: "Carga IA", icon: Sparkles },
+  { href: "/chat", label: "Chat", icon: MessageCircle },
   { href: "/etiquetas", label: "Etiquetas", icon: QrCode },
   { href: "/caja", label: "Caja", icon: Banknote },
 ];
@@ -33,7 +33,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </span>
             <div>
               <p className="font-heading text-xl leading-none">Atiendo</p>
-              <p className="mt-1 text-xs text-[#f6f1e6]/70">Librería · solo efectivo</p>
+              <p className="mt-1 text-xs text-[#f6f1e6]/70">Inventario, caja y chat</p>
             </div>
           </div>
           <nav className="mt-8 grid gap-1 px-3" aria-label="Secciones">
@@ -59,7 +59,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <div className="mt-auto grid gap-3 px-4 pb-5">
             <InstallHint />
             <p className="text-xs leading-5 text-[#f6f1e6]/60">
-              El inventario y las ventas se quedan en este navegador.
+              El inventario, las ventas y los chats se guardan en la base local.
             </p>
           </div>
         </aside>
@@ -70,7 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <BookOpen className="size-4" />
               <p className="font-heading text-lg leading-none">Atiendo</p>
             </div>
-            <p className="text-xs text-[#f6f1e6]/70">Solo efectivo</p>
+            <p className="text-xs text-[#f6f1e6]/70">Tu negocio</p>
           </header>
           <div className="px-4 pt-3 print:hidden md:hidden">
             <InstallHint />

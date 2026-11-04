@@ -4,7 +4,7 @@ export default function manifest(): MetadataRoute.Manifest {
   return {
     name: "Atiendo",
     short_name: "Atiendo",
-    description: "Inventario, etiquetas QR y caja en efectivo para la librería.",
+    description: "Inventario, etiquetas QR, caja y chat para tu negocio.",
     id: "/",
     start_url: "/",
     scope: "/",
@@ -17,6 +17,26 @@ export default function manifest(): MetadataRoute.Manifest {
     orientation: "any",
     categories: ["business", "shopping"],
     prefer_related_applications: false,
+    shortcuts: [
+      {
+        name: "Chat",
+        short_name: "Chat",
+        description: "Hablar del negocio o agregar productos",
+        url: "/chat",
+      },
+      {
+        name: "Caja",
+        short_name: "Caja",
+        description: "Cobrar en efectivo",
+        url: "/caja",
+      },
+      {
+        name: "Etiquetas",
+        short_name: "Etiquetas",
+        description: "Descargar o imprimir QRs",
+        url: "/etiquetas",
+      },
+    ],
     icons: [
       {
         src: "/icons/icon-192.png",

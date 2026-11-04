@@ -2,9 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Camera } from "lucide-react";
+import { Camera, Settings } from "lucide-react";
 
 type Phase = "idle" | "starting" | "live" | "error";
+
+type CameraFailure = {
+  message: string;
+  permission: boolean;
+};
 
 let scannerQueue: Promise<void> = Promise.resolve();
 
@@ -17,18 +22,59 @@ function enqueueScanner(task: () => Promise<void>): Promise<void> {
   return run;
 }
 
-function cameraErrorMessage(error: unknown): string {
+function cameraFailure(error: unknown): CameraFailure {
   const text = error instanceof Error ? `${error.name} ${error.message}` : String(error);
   if (/NotAllowed|Permission|denied/i.test(text)) {
-    return "Chrome bloqueó la cámara. Ábrela en el candado de la barra y vuelve a intentar, o escribe el código.";
+    return {
+      permission: true,
+      message:
+        "Chrome bloqueó la cámara para este sitio. Abre los ajustes y permite la cámara, o escribe el código.",
+    };
   }
   if (/NotFound|NotReadable|Overconstrained|no camera|devices/i.test(text)) {
-    return "No hay una cámara disponible en este equipo. Escribe el código que va debajo del QR.";
+    return {
+      permission: false,
+      message: "No hay una cámara disponible en este equipo. Escribe el código que va debajo del QR.",
+    };
   }
   if (/secure|https|insecure/i.test(text)) {
-    return "La cámara necesita Chrome en https o en localhost.";
+    return {
+      permission: false,
+      message: "La cámara necesita Chrome en https o en localhost.",
+    };
   }
-  return "No se pudo abrir la cámara. Puedes cobrar igual escribiendo el código.";
+  return {
+    permission: false,
+    message: "No se pudo abrir la cámara. Puedes cobrar igual escribiendo el código.",
+  };
+}
+
+function cameraSettingsUrl(): string {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `chrome://settings/content/siteDetails?site=${encodeURIComponent(origin)}`;
+}
+
+async function copyText(text: string): Promise<boolean> {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch {
+    // Chrome puede negar el portapapeles; se intenta el método anterior.
+  }
+  try {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.select();
+    const copied = document.execCommand("copy");
+    document.body.removeChild(area);
+    return copied;
+  } catch {
+    return false;
+  }
 }
 
 export function Scanner({ onScan }: { onScan: (raw: string) => void }) {
@@ -37,8 +83,33 @@ export function Scanner({ onScan }: { onScan: (raw: string) => void }) {
     onScanRef.current = onScan;
   }, [onScan]);
   const [phase, setPhase] = useState<Phase>("idle");
-  const [message, setMessage] = useState<string | null>(null);
+  const [failure, setFailure] = useState<CameraFailure | null>(null);
+  const [settingsUrl, setSettingsUrl] = useState<string | null>(null);
+  const [settingsNotice, setSettingsNotice] = useState<string | null>(null);
   const [session, setSession] = useState(0);
+
+  function retry() {
+    setFailure(null);
+    setSettingsUrl(null);
+    setSettingsNotice(null);
+    setPhase("starting");
+    setSession((value) => value + 1);
+  }
+
+  async function openSettings() {
+    if (!settingsUrl) return;
+    const copied = await copyText(settingsUrl);
+    setSettingsNotice(
+      copied
+        ? "Dirección copiada. Si Chrome no abrió los ajustes, pégala en la barra de direcciones."
+        : "Copia esta dirección en la barra de direcciones de Chrome:",
+    );
+    try {
+      window.location.assign(settingsUrl);
+    } catch {
+      // Chrome no permite abrir chrome:// desde una página.
+    }
+  }
 
   useEffect(() => {
     if (session === 0) return;
@@ -65,14 +136,19 @@ export function Scanner({ onScan }: { onScan: (raw: string) => void }) {
         );
         if (cancelled) return;
         setPhase("live");
-        setMessage(null);
+        setFailure(null);
+        setSettingsUrl(null);
+        setSettingsNotice(null);
         await new Promise<void>((resolve) => {
           release = resolve;
         });
       } catch (error) {
         if (!cancelled) {
+          const next = cameraFailure(error);
           setPhase("error");
-          setMessage(cameraErrorMessage(error));
+          setFailure(next);
+          setSettingsUrl(next.permission ? cameraSettingsUrl() : null);
+          setSettingsNotice(null);
         }
       } finally {
         if (scanner.isScanning) {
@@ -105,11 +181,7 @@ export function Scanner({ onScan }: { onScan: (raw: string) => void }) {
             <Button
               type="button"
               className="mx-auto h-11 bg-[#f3ead7] text-[#173328] hover:bg-[#fffaf3]"
-              onClick={() => {
-                setMessage(null);
-                setPhase("starting");
-                setSession((value) => value + 1);
-              }}
+              onClick={retry}
             >
               <Camera />
               Activar cámara
@@ -127,20 +199,29 @@ export function Scanner({ onScan }: { onScan: (raw: string) => void }) {
           Cámara lista. El mismo QR no se suma otra vez hasta que lo apartes un momento.
         </p>
       ) : null}
-      {phase === "error" && message ? (
-        <div className="grid gap-2" role="alert">
-          <p className="text-sm text-destructive">{message}</p>
-          <Button
-            type="button"
-            variant="outline"
-            onClick={() => {
-              setMessage(null);
-              setPhase("starting");
-              setSession((value) => value + 1);
-            }}
-          >
-            Reintentar cámara
-          </Button>
+      {phase === "error" && failure ? (
+        <div className="grid gap-3" role="alert">
+          <p className="text-sm text-destructive">{failure.message}</p>
+          <div className="flex flex-wrap gap-2">
+            {failure.permission ? (
+              <Button type="button" onClick={() => void openSettings()}>
+                <Settings />
+                Abrir ajustes de cámara
+              </Button>
+            ) : null}
+            <Button type="button" variant="outline" onClick={retry}>
+              Reintentar cámara
+            </Button>
+          </div>
+          {settingsUrl ? (
+            <div className="grid gap-1 rounded-lg border border-border bg-muted/40 px-3 py-2">
+              <p className="text-xs text-muted-foreground">
+                {settingsNotice ??
+                  "El botón copia la dirección exacta de los ajustes de este sitio."}
+              </p>
+              <code className="break-all text-[11px] text-muted-foreground">{settingsUrl}</code>
+            </div>
+          ) : null}
         </div>
       ) : null}
     </div>

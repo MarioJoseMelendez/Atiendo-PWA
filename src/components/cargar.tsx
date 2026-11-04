@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
@@ -274,24 +275,31 @@ export function Cargar() {
 
   return (
     <div className="grid gap-6">
-      <header>
-        <div className="flex flex-wrap items-center gap-2">
-          <h1 className="font-heading text-3xl tracking-tight">Carga rápida</h1>
-          <Badge variant="secondary">
-            <Sparkles />
-            IA
-          </Badge>
+      <header className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <div className="flex flex-wrap items-center gap-2">
+            <h1 className="font-heading text-3xl tracking-tight">Claves y carga avanzada</h1>
+            <Badge variant="secondary">
+              <Sparkles />
+              IA
+            </Badge>
+          </div>
+          <p className="mt-2 max-w-2xl text-sm text-muted-foreground">
+            Revisa la lista antes de cargarla y administra las claves. Para el día a día, usa el
+            chat.
+          </p>
         </div>
-        <p className="mt-2 max-w-2xl text-sm leading-6 text-muted-foreground">
-          Pega una lista, una factura o describe lo que tienes. La IA lo convierte en artículos y
-          tú revisas antes de cargarlos. El mismo producto puede quedar por pieza y por ciento con
-          precios distintos.
-        </p>
+        <Link
+          href="/chat"
+          className="text-sm text-muted-foreground underline underline-offset-4 hover:text-foreground"
+        >
+          Volver al chat
+        </Link>
       </header>
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-heading text-lg">1. Tu lista</CardTitle>
+          <CardTitle className="font-heading text-lg">Lista</CardTitle>
           <CardDescription>
             Escribe producto, precio y existencia. Si el mismo producto se vende suelto y por
             ciento, menciónalo en la misma línea.
@@ -339,10 +347,9 @@ export function Cargar() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="font-heading text-lg">2. Proveedor de IA</CardTitle>
+          <CardTitle className="font-heading text-lg">Proveedor</CardTitle>
           <CardDescription>
-            Si el proveedor preferido falla, se intenta con el otro. Si solo tienes una clave, se
-            usa esa.
+            Si el preferido falla, se intenta con el otro. Con una sola clave, se usa esa.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-3">
@@ -368,11 +375,10 @@ export function Cargar() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2 font-heading text-lg">
             <KeyRound className="size-4" />
-            3. Claves de IA
+            Claves de IA
           </CardTitle>
           <CardDescription>
-            Se guardan en la base local de la app, no solo en el navegador. No hay botón para
-            borrarlas.
+            Se guardan en la base local. No hay botón para borrarlas.
           </CardDescription>
         </CardHeader>
         <CardContent className="grid gap-4">

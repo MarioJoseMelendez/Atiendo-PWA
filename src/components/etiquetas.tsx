@@ -1,13 +1,15 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Printer } from "lucide-react";
+import { Download, FileText, Loader2, Printer } from "lucide-react";
 import { useInventory } from "@/components/inventory-provider";
 import { Button } from "@/components/ui/button";
 import { labelSections, unitPhrase } from "@/lib/inventory";
+import type { LabelFormat } from "@/lib/labels";
 import { replaceLabelGroup, useLabelGroup } from "@/lib/live";
 import { formatQ } from "@/lib/money";
 import { encodeQr } from "@/lib/qr";
+import { pushStore } from "@/lib/remote";
 import type { Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
@@ -15,6 +17,90 @@ export function Etiquetas() {
   const { ready, store } = useInventory();
   const groupId = useLabelGroup();
   const [svgs, setSvgs] = useState<Record<string, string>>({});
+  const [scope, setScope] = useState("all");
+  const [scopeTouched, setScopeTouched] = useState(false);
+  const [downloading, setDownloading] = useState<LabelFormat | null>(null);
+  const [downloadError, setDownloadError] = useState<string | null>(null);
+
+  const productOptions = useMemo(
+    () =>
+      store.groups
+        .map((group) => ({
+          group,
+          products: store.products
+            .filter((product) => product.groupId === group.id)
+            .sort((a, b) => a.name.localeCompare(b.name, "es")),
+        }))
+        .filter((entry) => entry.products.length > 0),
+    [store.groups, store.products],
+  );
+
+  const effectiveScope = useMemo(() => {
+    if (
+      !scopeTouched &&
+      groupId !== "todo" &&
+      store.groups.some((group) => group.id === groupId)
+    ) {
+      return `group:${groupId}`;
+    }
+    if (scope.startsWith("group:")) {
+      const id = scope.slice(6);
+      return store.groups.some((group) => group.id === id) ? scope : "all";
+    }
+    if (scope.startsWith("product:")) {
+      const id = scope.slice(8);
+      return store.products.some((product) => product.id === id) ? scope : "all";
+    }
+    return scope;
+  }, [groupId, scope, scopeTouched, store.groups, store.products]);
+
+  const downloadCount = useMemo(() => {
+    if (effectiveScope === "all") return store.products.length;
+    const [kind, id] = effectiveScope.split(":");
+    if (kind === "group") {
+      return store.products.filter((product) => product.groupId === id).length;
+    }
+    if (kind === "product") {
+      return store.products.some((product) => product.id === id) ? 1 : 0;
+    }
+    return 0;
+  }, [effectiveScope, store.products]);
+
+  async function download(format: LabelFormat) {
+    if (downloading || downloadCount === 0) return;
+    setDownloading(format);
+    setDownloadError(null);
+    await pushStore(store);
+    const [kind, id] = effectiveScope.split(":");
+    const params = new URLSearchParams({ scope: kind || "all", format });
+    if (id) params.set("id", id);
+    try {
+      const response = await fetch(`/api/etiquetas?${params.toString()}`);
+      if (!response.ok) {
+        const payload = (await response.json().catch(() => null)) as
+          | { error?: string }
+          | null;
+        setDownloadError(payload?.error ?? "No se pudo generar la descarga.");
+        return;
+      }
+      const blob = await response.blob();
+      const disposition = response.headers.get("Content-Disposition") ?? "";
+      const match = disposition.match(/filename="([^"]+)"/);
+      const filename = match?.[1] ?? `atiendo-etiquetas.${format}`;
+      const objectUrl = URL.createObjectURL(blob);
+      const anchor = document.createElement("a");
+      anchor.href = objectUrl;
+      anchor.download = filename;
+      document.body.appendChild(anchor);
+      anchor.click();
+      anchor.remove();
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    } catch {
+      setDownloadError("No se pudo conectar con el servidor.");
+    } finally {
+      setDownloading(null);
+    }
+  }
 
   const sections = useMemo(() => {
     if (!ready) return [];
@@ -62,8 +148,8 @@ export function Etiquetas() {
       <header className="flex flex-wrap items-end justify-between gap-3 print:block">
         <div>
           <h1 className="font-heading text-3xl tracking-tight print:text-2xl">Etiquetas</h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground print:hidden">
-            Cada QR lleva debajo el nombre de lo que es. Elige un grupo o saca todo el inventario.
+          <p className="mt-2 max-w-xl text-sm text-muted-foreground print:hidden">
+            Descarga o imprime. Cada paquete y cada individual es una etiqueta aparte.
           </p>
           <p className="sheet-heading mt-3 hidden font-heading text-lg print:block">
             Atiendo · {title}
@@ -75,12 +161,93 @@ export function Etiquetas() {
         </Button>
       </header>
 
+      <section className="grid gap-3 rounded-xl border border-border bg-card/70 p-3 print:hidden sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+        <label className="grid gap-1">
+          <span className="text-xs font-medium text-muted-foreground">
+            Descargar etiquetas
+          </span>
+          <select
+            value={effectiveScope}
+            onChange={(event) => {
+              setScope(event.target.value);
+              setScopeTouched(true);
+              setDownloadError(null);
+            }}
+            className="h-10 w-full rounded-lg border border-input bg-background px-3 text-sm outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+            aria-label="Qué etiquetas quieres descargar"
+          >
+            <option value="all">Todo el inventario ({store.products.length})</option>
+            {productOptions.length > 0 ? (
+              <optgroup label="Por tipo">
+                {productOptions.map((entry) => (
+                  <option key={entry.group.id} value={`group:${entry.group.id}`}>
+                    {entry.group.name} ({entry.products.length})
+                  </option>
+                ))}
+              </optgroup>
+            ) : null}
+            {productOptions.length > 0 ? (
+              <optgroup label="Por producto">
+                {productOptions.flatMap((entry) =>
+                  entry.products.map((product) => (
+                    <option key={product.id} value={`product:${product.id}`}>
+                      {entry.group.name} · {product.name} · {unitPhrase(product)} ({product.code})
+                    </option>
+                  )),
+                )}
+              </optgroup>
+            ) : null}
+          </select>
+        </label>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            onClick={() => void download("pdf")}
+            disabled={downloading !== null || downloadCount === 0}
+          >
+            {downloading === "pdf" ? <Loader2 className="animate-spin" /> : <Download />}
+            PDF
+          </Button>
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => void download("docx")}
+            disabled={downloading !== null || downloadCount === 0}
+          >
+            {downloading === "docx" ? <Loader2 className="animate-spin" /> : <FileText />}
+            Word
+          </Button>
+        </div>
+        <p className="text-xs leading-5 text-muted-foreground sm:col-span-2">
+          Los paquetes y los individuales van como etiquetas separadas. El archivo sale listo para
+          imprimir.
+        </p>
+        {downloadError ? (
+          <p className="text-xs text-destructive sm:col-span-2" role="alert">
+            {downloadError}
+          </p>
+        ) : null}
+      </section>
+
       <div className="flex gap-2 overflow-x-auto pb-1 print:hidden">
-        <GroupChip selected={groupId === "todo"} onClick={() => replaceLabelGroup("todo")}>
+        <GroupChip
+          selected={groupId === "todo"}
+          onClick={() => {
+            replaceLabelGroup("todo");
+            setScope("all");
+          }}
+        >
           Todo el inventario
         </GroupChip>
         {store.groups.map((group) => (
-          <GroupChip key={group.id} selected={groupId === group.id} onClick={() => replaceLabelGroup(group.id)}>
+          <GroupChip
+            key={group.id}
+            selected={groupId === group.id}
+            onClick={() => {
+              replaceLabelGroup(group.id);
+              setScope(`group:${group.id}`);
+            }}
+          >
             {group.name}
           </GroupChip>
         ))}

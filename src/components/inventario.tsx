@@ -33,8 +33,6 @@ import { useGuatemalaToday } from "@/lib/live";
 import type { Product } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
-const SPINES = ["#9c3b2e", "#1e3d32", "#8a5a2b", "#24506e", "#6b3f55"];
-
 export function Inventario() {
   const inventory = useInventory();
   const { ready, store } = inventory;
@@ -80,27 +78,20 @@ export function Inventario() {
       <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="font-heading text-3xl tracking-tight">Inventario</h1>
-          <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
-            Los sueltos se cobran por pieza. Los paquetes se cobran enteros, con el tamaño y un
-            precio distinto.
+          <p className="mt-2 text-sm text-muted-foreground">
+            Piezas y paquetes, con su QR y su precio.
           </p>
         </div>
-        <Button className="h-10" onClick={() => setGroupDialog("create")}>
+        <Button variant="outline" className="h-10" onClick={() => setGroupDialog("create")}>
           Nuevo grupo
         </Button>
       </header>
 
-      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-        <Stat label="Artículos" value={String(store.products.length)} />
-        <Stat label="Sueltos" value={String(loose)} />
-        <Stat label="Paquetes" value={String(packs)} />
-        <Stat
-          label="Cobrado hoy"
-          value={soldToday == null ? "—" : formatQ(soldToday)}
-        />
-      </div>
       <p className="text-sm text-muted-foreground">
-        Valor en inventario: {formatQ(inventoryValueCents(store.products))}
+        {store.products.length} {store.products.length === 1 ? "artículo" : "artículos"} ·{" "}
+        {loose} sueltos · {packs} paquetes ·{" "}
+        {formatQ(inventoryValueCents(store.products))} en inventario
+        {soldToday == null ? "" : ` · ${formatQ(soldToday)} cobrado hoy`}
       </p>
 
       {notice ? (
@@ -124,7 +115,7 @@ export function Inventario() {
       ) : (
         <div className="grid gap-4 md:grid-cols-[16rem_minmax(0,1fr)] md:items-start">
           <div className="flex gap-2 overflow-x-auto pb-1 md:flex-col md:overflow-visible">
-            {store.groups.map((item, index) => {
+            {store.groups.map((item) => {
               const count = store.products.filter((product) => product.groupId === item.id).length;
               const selected = item.id === group?.id;
               return (
@@ -133,21 +124,20 @@ export function Inventario() {
                   type="button"
                   onClick={() => setPickedGroupId(item.id)}
                   className={cn(
-                    "flex min-w-40 items-center gap-3 rounded-xl border px-3 py-3 text-left md:min-w-0",
+                    "min-w-40 rounded-xl border px-3 py-2.5 text-left md:min-w-0",
                     selected
                       ? "border-[#1e3d32] bg-[#1e3d32] text-[#f6f1e6]"
                       : "border-border bg-card",
                   )}
                 >
+                  <span className="block text-sm font-medium">{item.name}</span>
                   <span
-                    className="h-8 w-1.5 rounded-full"
-                    style={{ background: SPINES[index % SPINES.length] }}
-                  />
-                  <span>
-                    <span className="block text-sm font-medium">{item.name}</span>
-                    <span className={cn("block text-xs", selected ? "text-[#f6f1e6]/75" : "text-muted-foreground")}>
-                      {count} {count === 1 ? "artículo" : "artículos"} · {item.prefix}
-                    </span>
+                    className={cn(
+                      "block text-xs",
+                      selected ? "text-[#f6f1e6]/75" : "text-muted-foreground",
+                    )}
+                  >
+                    {count} {count === 1 ? "artículo" : "artículos"}
                   </span>
                 </button>
               );
@@ -159,18 +149,24 @@ export function Inventario() {
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <h2 className="font-heading text-2xl">{group.name}</h2>
-                  <p className="text-sm text-muted-foreground">Prefijo de códigos {group.prefix}</p>
+                  <p className="text-xs text-muted-foreground">Prefijo {group.prefix}</p>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <Button variant="outline" onClick={() => setGroupDialog(group.id)}>
-                    Editar grupo
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    aria-label={`Editar grupo ${group.name}`}
+                    title="Editar grupo"
+                    onClick={() => setGroupDialog(group.id)}
+                  >
+                    <Pencil />
                   </Button>
                   <Link
                     href={`/etiquetas#${group.id}`}
                     className={buttonVariants({ variant: "outline", className: "h-10" })}
                   >
                     <QrCode />
-                    Sacar QRs
+                    QRs
                   </Link>
                   <Button className="h-10" onClick={() => setProductDialog("create")}>
                     Nuevo artículo
@@ -256,42 +252,46 @@ export function Inventario() {
                         </div>
                         <Button
                           type="button"
-                          variant="outline"
-                          size="sm"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Editar ${product.name}`}
+                          title="Editar"
                           onClick={() => setProductDialog(product.id)}
                         >
                           <Pencil />
-                          Editar
                         </Button>
                         <Button
                           type="button"
-                          variant="destructive"
-                          size="sm"
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Borrar ${product.name}`}
+                          title="Borrar"
                           onClick={() => setPendingDelete(product)}
                         >
                           <Trash2 />
-                          Borrar
                         </Button>
                       </div>
                     </li>
                   ))}
                 </ul>
               )}
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-border pt-4">
-                <p className="max-w-md text-xs leading-5 text-muted-foreground">
-                  {store.products.some((product) => product.groupId === group.id)
-                    ? "Para borrar el grupo, primero quita sus artículos."
-                    : "Este grupo ya no tiene artículos."}
-                </p>
+              <div className="flex justify-end border-t border-border pt-3">
                 <Button
                   variant="ghost"
+                  size="icon-sm"
                   disabled={store.products.some((product) => product.groupId === group.id)}
+                  aria-label="Borrar grupo"
+                  title={
+                    store.products.some((product) => product.groupId === group.id)
+                      ? "Quita los artículos primero"
+                      : "Borrar grupo"
+                  }
                   onClick={() => {
                     const message = inventory.removeGroup(group.id);
                     setNotice(message);
                   }}
                 >
-                  Borrar grupo
+                  <Trash2 />
                 </Button>
               </div>
             </section>
@@ -355,16 +355,5 @@ export function Inventario() {
       </AlertDialog>
 
     </div>
-  );
-}
-
-function Stat({ label, value }: { label: string; value: string }) {
-  return (
-    <Card size="sm">
-      <CardContent className="grid gap-1">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="font-heading text-2xl leading-none">{value}</p>
-      </CardContent>
-    </Card>
   );
 }
